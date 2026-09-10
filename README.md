@@ -25,6 +25,7 @@
 - 随机选择一个 seed 样本；
 - 按相同 `(topic, subtopic)` 寻找候选；
 - 默认使用 seed 加最多两条同组问题，共最多三个 exemplar；
+- 从独立、可版本化的模板模块加载 Prompt 文本；
 - 构建并打印要求模型生成开放式科学问答的完整 Prompt；
 - 支持通过随机种子复现抽样结果。
 
@@ -44,7 +45,8 @@
 ├── benchmark/
 │   └── raw/
 │       └── so_openq.jsonl  # 本地下载，不纳入 Git
-├── prompt.py               # 动态抽样并构建 Prompt
+├── prompt_templates.py     # 集中保存不同版本的 Prompt 模板
+├── prompt.py               # 读取数据、动态抽样并填充模板
 └── README.md
 ```
 
@@ -91,6 +93,12 @@ python3 prompt.py --seed 2030
 python3 prompt.py --max-examples 3 --num-questions 5
 ```
 
+显式选择 Prompt 模板版本：
+
+```bash
+python3 prompt.py --prompt-version v1
+```
+
 指定数据文件：
 
 ```bash
@@ -108,3 +116,8 @@ python3 prompt.py --samples-path /path/to/so_openq.jsonl
 
 程序只检查输入 JSONL 是否包含必需字段，不改写原始问题和答案内容。
 
+## 修改或新增 Prompt 模板
+
+所有静态 Prompt 文本都集中在 `prompt_templates.py` 的
+`PROMPT_TEMPLATES` 中。修改现有版本时只需编辑对应模板字符串；新增版本时，
+复制一组模板、使用新的版本名注册，然后通过 `--prompt-version` 选择即可。

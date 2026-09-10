@@ -8,6 +8,8 @@ import random
 from pathlib import Path
 from typing import Any, Sequence
 
+from prompt_templates import DEFAULT_PROMPT_VERSION, PROMPT_TEMPLATES
+
 
 DEFAULT_SAMPLES_PATH = (
     Path(__file__).resolve().parent / "benchmark" / "raw" / "so_openq.jsonl"
@@ -73,13 +75,20 @@ def sample_examples(
 
 
 def build_prompt(
-    examples: Sequence[dict[str, str]], num_questions: int = 5
+    examples: Sequence[dict[str, str]],
+    num_questions: int = 5,
+    prompt_version: str = DEFAULT_PROMPT_VERSION,
 ) -> str:
     """Build the complete prompt string from related benchmark examples."""
     if not examples:
         raise ValueError("examples must not be empty")
     if num_questions < 1:
         raise ValueError("num_questions must be at least 1")
+    if prompt_version not in PROMPT_TEMPLATES:
+        available = ", ".join(sorted(PROMPT_TEMPLATES))
+        raise ValueError(
+            f"unknown prompt version {prompt_version!r}; available: {available}"
+        )
 
     topic = examples[0]["topic"]
     subtopic = examples[0]["subtopic"]
@@ -90,43 +99,22 @@ def build_prompt(
     ):
         raise ValueError("all examples must have the same topic and subtopic")
 
-    sections = [
-        "你将看到若干来自真实开放式科学问答 benchmark 的问题。",
-        "这些问题属于相同的科学子领域。",
-        f"【Topic】\n{topic}",
-        f"【Subtopic】\n{subtopic}",
-        (
-            "请参考这些问题的知识深度、问题形式和解题要求，"
-            "生成新的开放式科学问题。"
-        ),
-    ]
-
-    for index, example in enumerate(examples, start=1):
-        sections.append(
-            f"【示例 {index}】\n\n"
-            f"问题：\n{example['question']}\n\n"
-            f"参考答案：\n{example['answer']}"
+    template = PROMPT_TEMPLATES[prompt_version]
+    rendered_examples = "\n\n".join(
+        template.example.format(
+            index=index,
+            question=example["question"],
+            answer=example["answer"],
         )
-
-    sections.append(
-        f"""请生成 {num_questions} 个新的科学问题。
-
-要求：
-
-1. 必须是开放式问答，不要生成选择题；
-2. 新问题应与示例处于相同或相近的科学子领域；
-3. 不得只替换示例中的数字、实体、材料名、物种名等；
-4. 不要直接改写或轻微变形原问题；
-5. 新问题应具有明确、可验证的标准答案；
-6. 问题应尽量需要一定的科学分析、解释、计算或推导；
-7. 避免纯粹询问一个简单的孤立事实；
-8. 不要生成依赖图片才能理解的问题；
-9. 每个问题同时给出 question、answer 和 reasoning。
-
-只输出合法的 JSON 数组，不要输出 Markdown 代码块或其他说明。"""
+        for index, example in enumerate(examples, start=1)
     )
 
-    return "\n\n".join(sections)
+    return template.prompt.format(
+        topic=topic,
+        subtopic=subtopic,
+        examples=rendered_examples,
+        num_questions=num_questions,
+    )
 
 
 def build_random_prompt(
@@ -134,6 +122,7 @@ def build_random_prompt(
     max_examples: int = 3,
     num_questions: int = 5,
     seed: int | None = None,
+    prompt_version: str = DEFAULT_PROMPT_VERSION,
 ) -> str:
     """Load samples, select related examples, and return a complete prompt."""
     samples = load_samples(samples_path)
@@ -142,7 +131,11 @@ def build_random_prompt(
         max_examples=max_examples,
         rng=random.Random(seed),
     )
-    return build_prompt(examples, num_questions=num_questions)
+    return build_prompt(
+        examples,
+        num_questions=num_questions,
+        prompt_version=prompt_version,
+    )
 
 
 def parse_args() -> argparse.Namespace:
@@ -157,6 +150,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--max-examples", type=int, default=3)
     parser.add_argument("--num-questions", type=int, default=5)
+    parser.add_argument(
+        "--prompt-version",
+        choices=sorted(PROMPT_TEMPLATES),
+        default=DEFAULT_PROMPT_VERSION,
+        help=f"Prompt template version (default: {DEFAULT_PROMPT_VERSION}).",
+    )
     parser.add_argument(
         "--seed",
         type=int,
@@ -173,6 +172,7 @@ def main() -> None:
         max_examples=args.max_examples,
         num_questions=args.num_questions,
         seed=args.seed,
+        prompt_version=args.prompt_version,
     )
     print(prompt)
 
