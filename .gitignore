@@ -1,0 +1,13 @@
+# Downloaded benchmark data
+/benchmark/raw/
+
+# Runtime logs
+/logs/
+
+# Local planning document
+/给codex的计划书.md
+
+# Python-generated files
+__pycache__/
+*.py[cod]
+
