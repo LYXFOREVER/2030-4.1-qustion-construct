@@ -8,7 +8,12 @@ import random
 from pathlib import Path
 from typing import Any, Sequence
 
-from prompt_templates import DEFAULT_PROMPT_VERSION, PROMPT_TEMPLATES
+from prompt_templates import (
+    DEFAULT_PROMPT_VERSION,
+    DEFAULT_STRATEGY,
+    GENERATION_STRATEGIES,
+    PROMPT_TEMPLATES,
+)
 
 
 DEFAULT_SAMPLES_PATH = (
@@ -78,6 +83,7 @@ def build_prompt(
     examples: Sequence[dict[str, str]],
     num_questions: int = 5,
     prompt_version: str = DEFAULT_PROMPT_VERSION,
+    strategy_name: str = DEFAULT_STRATEGY,
 ) -> str:
     """Build the complete prompt string from related benchmark examples."""
     if not examples:
@@ -88,6 +94,11 @@ def build_prompt(
         available = ", ".join(sorted(PROMPT_TEMPLATES))
         raise ValueError(
             f"unknown prompt version {prompt_version!r}; available: {available}"
+        )
+    if strategy_name not in GENERATION_STRATEGIES:
+        available = ", ".join(sorted(GENERATION_STRATEGIES))
+        raise ValueError(
+            f"unknown generation strategy {strategy_name!r}; available: {available}"
         )
 
     topic = examples[0]["topic"]
@@ -100,6 +111,7 @@ def build_prompt(
         raise ValueError("all examples must have the same topic and subtopic")
 
     template = PROMPT_TEMPLATES[prompt_version]
+    strategy = GENERATION_STRATEGIES[strategy_name]
     rendered_examples = "\n\n".join(
         template.example.format(
             index=index,
@@ -114,6 +126,8 @@ def build_prompt(
         subtopic=subtopic,
         examples=rendered_examples,
         num_questions=num_questions,
+        strategy_title=strategy.title,
+        strategy_instruction=strategy.instruction,
     )
 
 
@@ -123,6 +137,7 @@ def build_random_prompt(
     num_questions: int = 5,
     seed: int | None = None,
     prompt_version: str = DEFAULT_PROMPT_VERSION,
+    strategy_name: str = DEFAULT_STRATEGY,
 ) -> str:
     """Load samples, select related examples, and return a complete prompt."""
     samples = load_samples(samples_path)
@@ -135,6 +150,7 @@ def build_random_prompt(
         examples,
         num_questions=num_questions,
         prompt_version=prompt_version,
+        strategy_name=strategy_name,
     )
 
 
@@ -157,6 +173,12 @@ def parse_args() -> argparse.Namespace:
         help=f"Prompt template version (default: {DEFAULT_PROMPT_VERSION}).",
     )
     parser.add_argument(
+        "--strategy",
+        choices=sorted(GENERATION_STRATEGIES),
+        default=DEFAULT_STRATEGY,
+        help=f"Question generation strategy (default: {DEFAULT_STRATEGY}).",
+    )
+    parser.add_argument(
         "--seed",
         type=int,
         default=None,
@@ -173,6 +195,7 @@ def main() -> None:
         num_questions=args.num_questions,
         seed=args.seed,
         prompt_version=args.prompt_version,
+        strategy_name=args.strategy,
     )
     print(prompt)
 

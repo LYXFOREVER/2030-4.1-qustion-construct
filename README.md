@@ -26,6 +26,7 @@
 - 按相同 `(topic, subtopic)` 寻找候选；
 - 默认使用 seed 加最多两条同组问题，共最多三个 exemplar；
 - 从独立、可版本化的模板模块加载 Prompt 文本；
+- 支持 10 种具有不同结构约束的问题生成策略；
 - 构建并打印要求模型生成开放式科学问答的完整 Prompt；
 - 支持通过随机种子复现抽样结果。
 
@@ -99,6 +100,13 @@ python3 prompt.py --max-examples 3 --num-questions 5
 python3 prompt.py --prompt-version v1
 ```
 
+选择问题生成策略：
+
+```bash
+python3 prompt.py --strategy multi_step
+python3 prompt.py --strategy numerical_derivation
+```
+
 指定数据文件：
 
 ```bash
@@ -116,8 +124,40 @@ python3 prompt.py --samples-path /path/to/so_openq.jsonl
 
 程序只检查输入 JSONL 是否包含必需字段，不改写原始问题和答案内容。
 
+## 问题生成策略
+
+`--strategy` 支持以下 10 个值：
+
+| 参数值 | 策略 |
+| --- | --- |
+| `general` | 通用生成 |
+| `multi_step` | 多步推理 |
+| `multi_constraint` | 多条件约束 |
+| `boundary_condition` | 边界条件 |
+| `causal_mechanism` | 因果机制 |
+| `competing_mechanisms` | 竞争机制 |
+| `counterfactual` | 反事实推理 |
+| `numerical_derivation` | 数值推导 |
+| `experimental_reasoning` | 实验推理 |
+| `confusable_concepts` | 易混淆概念 |
+
+所有策略共享相同的 exemplar 抽取逻辑和公共要求。策略只改变生成问题的结构与
+推理约束，并始终要求科学正确性优先于复杂度。
+
+比较不同策略时可以固定同一个 `--seed`。策略选择不参与随机抽样，因此相同 seed
+会得到相同 exemplar，便于只观察策略变化带来的差异：
+
+```bash
+python3 prompt.py --seed 2030 --strategy general
+python3 prompt.py --seed 2030 --strategy multi_step
+```
+
 ## 修改或新增 Prompt 模板
 
-所有静态 Prompt 文本都集中在 `prompt_templates.py` 的
-`PROMPT_TEMPLATES` 中。修改现有版本时只需编辑对应模板字符串；新增版本时，
-复制一组模板、使用新的版本名注册，然后通过 `--prompt-version` 选择即可。
+所有静态 Prompt 文本都集中在 `prompt_templates.py` 中：
+
+- `PROMPT_TEMPLATES` 控制 Prompt 的整体布局，通过 `--prompt-version` 选择；
+- `GENERATION_STRATEGIES` 控制问题的结构和推理要求，通过 `--strategy` 选择。
+
+修改整体格式时编辑或新增 `PROMPT_TEMPLATES`；增加问题生成方法时向
+`GENERATION_STRATEGIES` 注册新策略，不需要复制完整 Prompt。
