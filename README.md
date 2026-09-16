@@ -4,6 +4,10 @@
 
 当前版本只负责构建和打印 Prompt，不调用任何 LLM API，也不执行问题生成、幻觉检测、事实核验、去重或修复。
 
+## 流程概览
+
+![Dynamic Science Prompt Construction 流程图](./4.1流程图.png)
+
 ## 使用的 Benchmark
 
 当前使用 [NVIDIA Nemotron-RL-Science-v1](https://huggingface.co/datasets/nvidia/Nemotron-RL-Science-v1) 的 `so_openq` 数据：
@@ -48,6 +52,7 @@
 │       └── so_openq.jsonl  # 本地下载，不纳入 Git
 ├── prompt_templates.py     # 集中保存不同版本的 Prompt 模板
 ├── prompt.py               # 读取数据、动态抽样并填充模板
+├── 4.1流程图.png           # 当前 Prompt 构建流程图
 └── README.md
 ```
 
