@@ -20,10 +20,19 @@
 
 原始数据约 266 MB，不纳入 Git 仓库。每条数据的具体来源和许可证信息以原始数据集中的 `metadata.QuestionLink` 和 `license` 字段为准。
 
+同时已下载 [MatSciBench](https://huggingface.co/datasets/JunkaiZ/MatSciBench) 的
+Parquet 数据，用于材料科学问题抽样。当前只使用同时具有问题、答案和详细解答且
+不含图片的记录；Prompt exemplar 只展示问题和简短答案，不展示详细解答。
+
 ## 当前状态
 
 当前已经实现：
 
+- 通过独立 adapter 将 Nemotron 和 MatSciBench 转换为统一 `Sample`；
+- 审计 MatSciBench 的缺失答案、缺失解答、图片和视觉引用；
+- 默认筛选同时具有问题、答案和解答且不含图片的材料样本；
+- 支持通过 `--domain` 选择 Biology、Chemistry 或 Materials；
+- 未指定领域时，在上述三个领域中等概率随机选择；
 - 直接逐行读取 Nemotron 原始 JSONL；
 - 在内存中仅保留构建 Prompt 所需字段；
 - 随机选择一个 seed 样本；
@@ -36,12 +45,12 @@
 
 当前尚未实现：
 
-- 学科均衡抽样；
 - 复杂的数据质量过滤；
 - 模型调用与生成结果保存；
 - 科学正确性检查、幻觉筛选和去重。
 
-目前 seed 从全部数据中等概率抽取，因此输出会遵循原始数据分布，Physics 出现的概率明显高于 Chemistry 和 Biology。
+Physics 不在当前目标领域中，不会进入 Prompt。当前不对各领域内部的 subtopic
+进行均衡；选定领域后，先随机选择 seed，再抽取与 seed 相同 subtopic 的 exemplar。
 
 ## 项目结构
 
@@ -49,7 +58,12 @@
 .
 ├── benchmark/
 │   └── raw/
-│       └── so_openq.jsonl  # 本地下载，不纳入 Git
+│       ├── nemotron/
+│       │   └── so_openq.jsonl       # 本地下载，不纳入 Git
+│       └── matscibench/
+│           └── MatSciBench.parquet  # 本地下载，不纳入 Git
+├── benchmark_adapters.py   # Benchmark 读取、过滤、统一数据模型与自检入口
+├── environment.yml         # Conda 环境定义
 ├── prompt_templates.py     # 集中保存不同版本的 Prompt 模板
 ├── prompt.py               # 读取数据、动态抽样并填充模板
 ├── 4.1流程图.png           # 当前 Prompt 构建流程图
@@ -63,71 +77,114 @@
 在仓库根目录执行：
 
 ```bash
-mkdir -p benchmark/raw
+mkdir -p benchmark/raw/nemotron
 curl --fail --location \
   'https://huggingface.co/datasets/nvidia/Nemotron-RL-Science-v1/resolve/main/so_openq.jsonl?download=true' \
-  --output benchmark/raw/so_openq.jsonl
+  --output benchmark/raw/nemotron/so_openq.jsonl
 ```
 
 程序默认从以下位置读取数据：
 
 ```text
-benchmark/raw/so_openq.jsonl
+benchmark/raw/nemotron/so_openq.jsonl
 ```
 
-也可以通过 `--samples-path` 指定其他位置。
+也可以通过 `--nemotron-path`（或兼容别名 `--samples-path`）指定其他位置；
+MatSciBench 路径通过 `--matscibench-path` 指定。
 
 ## 运行
 
-项目只依赖 Python 标准库，不需要安装额外 Python 包。
-
-直接随机构建一个 Prompt：
+Nemotron 读取只依赖 Python 标准库，MatSciBench Parquet 读取依赖 PyArrow。
+项目提供了完整的 Conda 环境定义：
 
 ```bash
-python3 prompt.py
+conda env create -f environment.yml
+conda activate science-prompt
+```
+
+环境使用 Python 3.11，并安装 PyArrow 作为 Parquet 读取依赖。
+
+检查 MatSciBench adapter 的过滤统计并随机显示合格样本：
+
+```bash
+python benchmark_adapters.py --source matscibench --show-samples 5 --seed 2030
+```
+
+额外排除题面中提到 Figure、Diagram 或 Table 的记录：
+
+```bash
+python benchmark_adapters.py \
+  --source matscibench \
+  --exclude-visual-references \
+  --show-samples 5
+```
+
+同一入口也可以检查 Nemotron 的目标领域：
+
+```bash
+python benchmark_adapters.py --source nemotron --domain biology --show-samples 3
+python benchmark_adapters.py --source nemotron --domain chemistry --show-samples 3
+```
+
+在 Biology、Chemistry 和 Materials 中等概率选择一个领域并构建 Prompt：
+
+```bash
+python prompt.py
+```
+
+显式选择领域：
+
+```bash
+python prompt.py --domain biology
+python prompt.py --domain chemistry
+python prompt.py --domain materials
 ```
 
 使用固定随机种子复现抽样结果：
 
 ```bash
-python3 prompt.py --seed 2030
+python prompt.py --seed 2030
 ```
 
 调整 exemplar 数量和要求生成的问题数量：
 
 ```bash
-python3 prompt.py --max-examples 3 --num-questions 5
+python prompt.py --domain materials --max-examples 3 --num-questions 5
 ```
 
 显式选择 Prompt 模板版本：
 
 ```bash
-python3 prompt.py --prompt-version v1
+python prompt.py --prompt-version v1
 ```
 
 选择问题生成策略：
 
 ```bash
-python3 prompt.py --strategy multi_step
-python3 prompt.py --strategy numerical_derivation
+python prompt.py --strategy multi_step
+python prompt.py --strategy numerical_derivation
 ```
 
 指定数据文件：
 
 ```bash
-python3 prompt.py --samples-path /path/to/so_openq.jsonl
+python prompt.py --nemotron-path /path/to/so_openq.jsonl --domain biology
+python prompt.py --matscibench-path /path/to/MatSciBench.parquet --domain materials
 ```
 
 ## 抽样逻辑
 
-1. 从全部样本中随机选择一个 seed；
-2. 读取 seed 的 `topic` 和 `subtopic`；
-3. 查找相同 `(topic, subtopic)` 的其他样本；
-4. 将 seed 作为第一个 exemplar，再随机补充同组样本；
-5. 将 exemplar 的问题和参考答案拼接到固定模板中；
-6. 将完整 Prompt 输出到标准输出。
+1. 使用 `--domain` 指定领域；未指定时从三个目标领域中等概率随机选择；
+2. 根据领域选择 Nemotron 或 MatSciBench adapter；
+3. adapter 校验并过滤原始记录，返回统一 `Sample`；
+4. 从目标领域样本中随机选择一个 seed；
+5. 查找与 seed 相同 `(source, domain, subtopic)` 的其他样本；
+6. 将 seed 作为第一个 exemplar，再随机补充同组样本；
+7. 将 exemplar 的问题和参考答案拼接到固定模板中；
+8. 将完整 Prompt 输出到标准输出。
 
-程序只检查输入 JSONL 是否包含必需字段，不改写原始问题和答案内容。
+程序不改写原始问题和答案。MatSciBench 的 `solution` 只用于筛选完整样本，不会
+写入当前 Prompt。
 
 ## 问题生成策略
 
@@ -153,8 +210,8 @@ python3 prompt.py --samples-path /path/to/so_openq.jsonl
 会得到相同 exemplar，便于只观察策略变化带来的差异：
 
 ```bash
-python3 prompt.py --seed 2030 --strategy general
-python3 prompt.py --seed 2030 --strategy multi_step
+python prompt.py --domain materials --seed 2030 --strategy general
+python prompt.py --domain materials --seed 2030 --strategy multi_step
 ```
 
 ## 修改或新增 Prompt 模板
